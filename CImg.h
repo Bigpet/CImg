@@ -80,6 +80,31 @@
 #include <ctime>
 #include <exception>
 #include <algorithm>
+#include <cassert>
+
+#define CIMG_MEM_ALIGNMENT 64
+
+inline void checkAlign(void* ptr)
+{
+  if ((((unsigned long long)ptr) % CIMG_MEM_ALIGNMENT) != 0)
+  {
+    //misaligned
+    assert("MISALIGNED PTR",false);
+  }
+}
+
+
+template< typename T>
+inline T* myalloc(size_t num_elements)
+{
+  T* result = (T*)_aligned_malloc(sizeof(T)*num_elements, CIMG_MEM_ALIGNMENT);
+  return result;
+}
+
+
+#define NEW_ALIGNED(var, T,siz) var = myalloc<T>(siz)
+#define DEL_ALIGNED(ptr) _aligned_free(ptr)
+#define CHECK_ALIGN(ptr) checkAlign(ptr)
 
 // Detect/configure OS variables.
 //
@@ -185,7 +210,7 @@
 
 // Look for C++11 features.
 #ifndef cimg_use_cpp11
-#if __cplusplus>201100
+#if __cplusplus>201100 || _MSC_VER>=1700
 #define cimg_use_cpp11 1
 #else
 #define cimg_use_cpp11 0
@@ -9939,7 +9964,7 @@ namespace cimg_library_suffixed {
          (to a deallocated buffer).
     **/
     ~CImg() {
-      if (!_is_shared) delete[] _data;
+      if (!_is_shared) DEL_ALIGNED(_data);
     }
 
     //! Construct empty image.
@@ -9959,7 +9984,11 @@ namespace cimg_library_suffixed {
        img2.assign();               // Re-assign 'img2' to be an empty image again.
        \endcode
     **/
-    CImg():_width(0),_height(0),_depth(0),_spectrum(0),_is_shared(false),_data(0) {}
+    CImg():_width(0),_height(0),_depth(0),_spectrum(0),_is_shared(false),_data(0)  
+    #ifdef cimg_load_plugin1
+         ,camInfoHeader()
+    #endif
+    {}
 
     //! Construct image with specified size.
     /**
@@ -9990,7 +10019,8 @@ namespace cimg_library_suffixed {
       size_t siz = (size_t)size_x*size_y*size_z*size_c;
       if (siz) {
         _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c;
-        try { _data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(_data, T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10022,7 +10052,8 @@ namespace cimg_library_suffixed {
       const size_t siz = (size_t)size_x*size_y*size_z*size_c;
       if (siz) {
         _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c;
-        try { _data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(_data,T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10247,7 +10278,8 @@ namespace cimg_library_suffixed {
       const size_t siz = (size_t)size_x*size_y*size_z*size_c;
       if (siz) {
         _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c;
-        try { _data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(_data,T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10303,7 +10335,8 @@ namespace cimg_library_suffixed {
       const size_t siz = (size_t)size_x*size_y*size_z*size_c;
       if (values && siz) {
         _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c;
-        try { _data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(_data,T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10324,7 +10357,8 @@ namespace cimg_library_suffixed {
         _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c; _is_shared = is_shared;
         if (_is_shared) _data = const_cast<T*>(values);
         else {
-          try { _data = new T[siz]; } catch (...) {
+          try { NEW_ALIGNED(_data,T, siz); }
+          catch (...) {
             _width = _height = _depth = _spectrum = 0; _data = 0;
             throw CImgInstanceException(_cimg_instance
                                         "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10386,7 +10420,8 @@ namespace cimg_library_suffixed {
       const size_t siz = (size_t)img.size();
       if (img._data && siz) {
         _width = img._width; _height = img._height; _depth = img._depth; _spectrum = img._spectrum;
-        try { _data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(_data, T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10396,6 +10431,9 @@ namespace cimg_library_suffixed {
         }
         const t *ptrs = img._data; cimg_for(*this,ptrd,T) *ptrd = (T)*(ptrs++);
       } else { _width = _height = _depth = _spectrum = 0; _data = 0; }
+#ifdef cimg_load_plugin1
+      setCamInfoHeader(img.camInfoHeader.serial,img.camInfoHeader.camNumber,img.camInfoHeader.date);	  
+#endif
     }
 
     //! Construct image copy \specialization.
@@ -10406,7 +10444,8 @@ namespace cimg_library_suffixed {
         _is_shared = img._is_shared;
         if (_is_shared) _data = const_cast<T*>(img._data);
         else {
-          try { _data = new T[siz]; } catch (...) {
+          try { NEW_ALIGNED(_data, T, siz); }
+          catch (...) {
             _width = _height = _depth = _spectrum = 0; _data = 0;
             throw CImgInstanceException(_cimg_instance
                                         "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10418,6 +10457,9 @@ namespace cimg_library_suffixed {
           std::memcpy(_data,img._data,siz*sizeof(T));
         }
       } else { _width = _height = _depth = _spectrum = 0; _is_shared = false; _data = 0; }
+#ifdef cimg_load_plugin1
+      setCamInfoHeader(img.camInfoHeader.serial,img.camInfoHeader.camNumber,img.camInfoHeader.date);	  
+#endif
     }
 
     //! Advanced copy constructor.
@@ -10448,7 +10490,8 @@ namespace cimg_library_suffixed {
       const size_t siz = (size_t)img.size();
       if (img._data && siz) {
         _width = img._width; _height = img._height; _depth = img._depth; _spectrum = img._spectrum;
-        try { _data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(_data, T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10458,6 +10501,9 @@ namespace cimg_library_suffixed {
         }
         const t *ptrs = img._data; cimg_for(*this,ptrd,T) *ptrd = (T)*(ptrs++);
       } else { _width = _height = _depth = _spectrum = 0; _data = 0; }
+#ifdef cimg_load_plugin1
+      setCamInfoHeader(img.camInfoHeader.serial,img.camInfoHeader.camNumber,img.camInfoHeader.date);	  
+#endif
     }
 
     //! Advanced copy constructor \specialization.
@@ -10468,7 +10514,8 @@ namespace cimg_library_suffixed {
         _is_shared = is_shared;
         if (_is_shared) _data = const_cast<T*>(img._data);
         else {
-          try { _data = new T[siz]; } catch (...) {
+          try { NEW_ALIGNED(_data, T, siz); }
+          catch (...) {
             _width = _height = _depth = _spectrum = 0; _data = 0;
             throw CImgInstanceException(_cimg_instance
                                         "CImg(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10479,6 +10526,9 @@ namespace cimg_library_suffixed {
           std::memcpy(_data,img._data,siz*sizeof(T));
         }
       } else { _width = _height = _depth = _spectrum = 0; _is_shared = false; _data = 0; }
+#ifdef cimg_load_plugin1
+      setCamInfoHeader(img.camInfoHeader.serial,img.camInfoHeader.camNumber,img.camInfoHeader.date);	  
+#endif
     }
 
     //! Construct image with dimensions borrowed from another image.
@@ -10554,7 +10604,7 @@ namespace cimg_library_suffixed {
        In-place version of the default constructor CImg(). It simply resets the instance to an empty image.
     **/
     CImg<T>& assign() {
-      if (!_is_shared) delete[] _data;
+      if (!_is_shared) DEL_ALIGNED(_data);
       _width = _height = _depth = _spectrum = 0; _is_shared = false; _data = 0;
       return *this;
     }
@@ -10576,8 +10626,9 @@ namespace cimg_library_suffixed {
                                       cimg_instance,
                                       size_x,size_y,size_z,size_c);
 	else {
-          delete[] _data;
-          try { _data = new T[siz]; } catch (...) {
+          DEL_ALIGNED(_data);
+          try { NEW_ALIGNED(_data, T, siz); }
+          catch (...) {
             _width = _height = _depth = _spectrum = 0; _data = 0;
             throw CImgInstanceException(_cimg_instance
                                         "assign(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10661,7 +10712,8 @@ namespace cimg_library_suffixed {
         else std::memcpy(_data,values,siz*sizeof(T));
       } else {
         T *new_data = 0;
-        try { new_data = new T[siz]; } catch (...) {
+        try { NEW_ALIGNED(new_data, T, siz); }
+        catch (...) {
           _width = _height = _depth = _spectrum = 0; _data = 0;
           throw CImgInstanceException(_cimg_instance
                                       "assign(): Failed to allocate memory (%s) for image (%u,%u,%u,%u).",
@@ -10670,7 +10722,8 @@ namespace cimg_library_suffixed {
                                       size_x,size_y,size_z,size_c);
         }
         std::memcpy(new_data,values,siz*sizeof(T));
-        delete[] _data; _data = new_data; _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c;
+        DEL_ALIGNED(_data);
+        _data = new_data; _width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c;
       }
       return *this;
     }
@@ -10703,6 +10756,7 @@ namespace cimg_library_suffixed {
 	}
 	_width = size_x; _height = size_y; _depth = size_z; _spectrum = size_c; _is_shared = true;
 	_data = const_cast<T*>(values);
+	CHECK_ALIGN(_data);
       }
       return *this;
     }
@@ -10721,6 +10775,9 @@ namespace cimg_library_suffixed {
     **/
     template<typename t>
     CImg<T>& assign(const CImg<t>& img) {
+#ifdef cimg_load_plugin1
+    setCamInfoHeader(img.camInfoHeader.serial,img.camInfoHeader.camNumber,img.camInfoHeader.date);	  
+#endif
       return assign(img._data,img._width,img._height,img._depth,img._spectrum);
     }
 
@@ -10730,6 +10787,9 @@ namespace cimg_library_suffixed {
      **/
     template<typename t>
     CImg<T>& assign(const CImg<t>& img, const bool is_shared) {
+#ifdef cimg_load_plugin1
+    setCamInfoHeader(img.camInfoHeader.serial,img.camInfoHeader.camNumber,img.camInfoHeader.date);	  
+#endif
       return assign(img._data,img._width,img._height,img._depth,img._spectrum,is_shared);
     }
 
