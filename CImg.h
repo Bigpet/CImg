@@ -85,29 +85,51 @@
 #include <algorithm>
 #include <cassert>
 
-#define CIMG_MEM_ALIGNMENT 64
+///////////////////////////////////////////////////////////////////////////////////////////////
+//start aligned alloc defines/functions                                                      //
+////////////////////////////////////////////////                                             //
+#define CIMG_MEM_ALIGNMENT 64                                                                //
+                                                                                             //
+namespace alignedAllocTools{                                                                 //
+  template< typename T>                                                                      //
+  inline T* myalloc(size_t num_elements)                                                     //
+  {                                                                                          //
+#if defined(_MSC_VER)                                                                        //
+    T* result = (T*)_aligned_malloc(sizeof(T)*num_elements, CIMG_MEM_ALIGNMENT);             //
+#else                                                                                        //
+    T* result = (T*)aligned_alloc(CIMG_MEM_ALIGNMENT, sizeof(T)*num_elements);               //
+#endif                                                                                       //
+    return result;                                                                           //
+  }                                                                                          //
+                                                                                             //
+  template< typename T>                                                                      //
+  inline void myfree(T* ptr)                                                                 //
+  {                                                                                          //
+#if defined(_MSC_VER)                                                                        //
+    _aligned_free(ptr);                                                                      //
+#else                                                                                        //
+    free(ptr);                                                                               //
+#endif                                                                                       //
+  }                                                                                          //
+                                                                                             //
+  inline void checkAlign(void* ptr)                                                          //
+  {                                                                                          //
+    if ((((unsigned long long)ptr) % CIMG_MEM_ALIGNMENT) != 0)                               //
+    {                                                                                        //
+      //misaligned                                                                           //
+      assert(("MISALIGNED PTR", false));                                                     //
+    }                                                                                        //
+  }                                                                                          //
+}                                                                                            //
+                                                                                             //
+#define NEW_ALIGNED(var, T,siz) var = alignedAllocTools::myalloc<T>(siz)                     //
+#define DEL_ALIGNED(ptr) alignedAllocTools::myfree(ptr)                                      //
+#define CHECK_ALIGN(ptr) alignedAllocTools::checkAlign(ptr)                                  //
+                                                                                             //
+////////////////////////////////////////////////                                             //
+//end aligned alloc defines/functions                                                        //
+///////////////////////////////////////////////////////////////////////////////////////////////
 
-inline void checkAlign(void* ptr)
-{
-  if ((((unsigned long long)ptr) % CIMG_MEM_ALIGNMENT) != 0)
-  {
-    //misaligned
-    assert("MISALIGNED PTR",false);
-  }
-}
-
-
-template< typename T>
-inline T* myalloc(size_t num_elements)
-{
-  T* result = (T*)_aligned_malloc(sizeof(T)*num_elements, CIMG_MEM_ALIGNMENT);
-  return result;
-}
-
-
-#define NEW_ALIGNED(var, T,siz) var = myalloc<T>(siz)
-#define DEL_ALIGNED(ptr) _aligned_free(ptr)
-#define CHECK_ALIGN(ptr) checkAlign(ptr)
 
 // Detect/configure OS variables.
 //
@@ -31352,7 +31374,7 @@ namespace cimg_library_suffixed {
         }
       } break;
       case 'y' : {
-        buf = new T[_width];
+		NEW_ALIGNED(buf, T, _width);
         pf = _data; pb = data(0,_height - 1);
         const unsigned int height2 = _height/2;
         for (unsigned int zv = 0; zv<_depth*_spectrum; ++zv) {
@@ -31368,7 +31390,7 @@ namespace cimg_library_suffixed {
         }
       } break;
       case 'z' : {
-        buf = new T[(ulongT)_width*_height];
+		NEW_ALIGNED(buf, T, (ulongT)_width*_height);
         pf = _data; pb = data(0,0,_depth - 1);
         const unsigned int depth2 = _depth/2;
         cimg_forC(*this,c) {
@@ -31384,7 +31406,7 @@ namespace cimg_library_suffixed {
         }
       } break;
       case 'c' : {
-        buf = new T[(ulongT)_width*_height*_depth];
+		NEW_ALIGNED(buf, T, (ulongT)_width*_height*_depth);
         pf = _data; pb = data(0,0,0,_spectrum - 1);
         const unsigned int _spectrum2 = _spectrum/2;
         for (unsigned int v = 0; v<_spectrum2; ++v) {
@@ -31401,7 +31423,7 @@ namespace cimg_library_suffixed {
                                     cimg_instance,
                                     axis);
       }
-      delete[] buf;
+      DEL_ALIGNED(buf);
       return *this;
     }
 
@@ -51201,7 +51223,7 @@ namespace cimg_library_suffixed {
         if (endian) cimg::invert_endianness(dims,nbdim); \
         assign(nwidth,nheight,ndepth,ndim); \
         const size_t siz = size(); \
-        stype *buffer = new stype[siz]; \
+        stype *buffer =stype[siz]; \
         cimg::fread(buffer,siz,nfile); \
         if (endian) cimg::invert_endianness(buffer,siz); \
         T *ptrd = _data; \
